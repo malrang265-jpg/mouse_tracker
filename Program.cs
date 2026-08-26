@@ -20,7 +20,7 @@ namespace MouseTracker
             // 윈도우(폼) 생성
             Form form = new Form();
             form.Text = "마우스 좌표 트래커";
-            form.Size = new Size(260, 120);
+            form.Size = new Size(350, 120);
             form.StartPosition = FormStartPosition.CenterScreen;
             form.FormBorderStyle = FormBorderStyle.FixedSingle;
             form.MaximizeBox = false;
