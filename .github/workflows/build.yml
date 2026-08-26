@@ -13,7 +13,7 @@ jobs:
       
       - name: Compile with MinGW (g++)
         run: |
-          C:\msys64\mingw64\bin\g++ -static -o MouseTracker.exe main.cpp -lgdi32 -Wl,-subsystem,windows
+          C:\msys64\mingw64\bin\g++ -static -o MouseTracker.exe main.cpp -lgdi32 "-Wl,-subsystem,windows"
           
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
