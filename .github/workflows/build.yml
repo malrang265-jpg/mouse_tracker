@@ -18,7 +18,10 @@ jobs:
           msystem: MINGW64
           install: mingw-w64-x86_64-gcc
           update: true
-
+          
+      - name: Compile Resource
+        run: windres resource.rc -O coff -o resource.o
+        
       # MSYS2 쉘에서 컴파일 실행
       - name: Compile
         shell: msys2 {0}
