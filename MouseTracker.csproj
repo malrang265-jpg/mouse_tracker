@@ -1,47 +1,9 @@
-using System;
-using System.Drawing;
-using System.Windows.Forms;
-using System.Timers;
-
-namespace MouseTracker
-{
-    class Program
-    {
-        static Label coordLabel;
-        static System.Timers.Timer timer;
-
-        [STAThread]
-        static void Main()
-        {
-            ApplicationConfiguration.Initialize();
-
-            Form form = new Form();
-            form.Text = "마우스 좌표 트래커";
-            form.Size = new Size(260, 120);
-            form.StartPosition = FormStartPosition.CenterScreen;
-            form.FormBorderStyle = FormBorderStyle.FixedSingle;
-            form.MaximizeBox = false;
-            form.TopMost = true; // 다른 창 위에 항상 표시 (좌표 확인 편의)
-
-            coordLabel = new Label();
-            coordLabel.Text = "X: 0  Y: 0";
-            coordLabel.Font = new Font("맑은 고딕", 24, FontStyle.Bold);
-            coordLabel.TextAlign = ContentAlignment.MiddleCenter;
-            coordLabel.Dock = DockStyle.Fill;
-            form.Controls.Add(coordLabel);
-
-            timer = new System.Timers.Timer(50);
-            timer.Elapsed += (sender, e) =>
-            {
-                Point pos = Cursor.Position;
-                form.Invoke((MethodInvoker)(() =>
-                {
-                    coordLabel.Text = $"X: {pos.X}  Y: {pos.Y}";
-                }));
-            };
-            timer.Start();
-
-            Application.Run(form);
-        }
-    }
-}
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>
