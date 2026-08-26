@@ -1,8 +1,8 @@
 name: Build EXE (C++)
 
-::
+on:
   push:
-    분기들: [ main ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -11,23 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # MSYS2 환경 설정 (MinGW-w64 GCC 설치)
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           install: mingw-w64-x86_64-gcc
           update: true
-          
-      - name: Compile Resource
-        run: windres resource.rc -O coff -o resource.o
-        
-      # MSYS2 쉘에서 컴파일 실행
+
       - name: Compile
         shell: msys2 {0}
         run: |
           g++ -static -o MouseTracker.exe main.cpp -lgdi32 -Wl,-subsystem,windows
-          g++ -static -o MouseTracker.exe main.cpp resource.o -lgdi32 -Wl,-subsystem,windows
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
