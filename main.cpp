@@ -1,26 +1,25 @@
 #include <windows.h>
 #include <windowsx.h>
-#include <shlobj.h>     // ✅ SHGetFolderPathW 사용을 위해 추가
+#include <shlobj.h>
 #include <string>
 #include <ctime>
 
 HWND g_hWnd;
+HHOOK g_hMouseHook = NULL;  // 전역 마우스 훅 핸들
+int g_clickCount = 1;       // 클릭 횟수 (전역에서 공유)
 
 // 📝 바탕화면에 좌표를 저장하는 함수
 void SaveClickPosition(int x, int y) {
     wchar_t filePath[MAX_PATH];
     
-    // 1. 바탕화면 경로 가져오기 (항상 쓰기 가능)
+    // 바탕화면 경로 가져오기
     HRESULT hr = SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, 0, filePath);
     if (FAILED(hr)) {
-        // 바탕화면 경로를 못 가져오면 임시 폴더로 대체
         GetTempPathW(MAX_PATH, filePath);
     }
-    
-    // 2. 파일명 추가: "C:\Users\사용자\Desktop\click_coordinates.txt"
     wcscat_s(filePath, MAX_PATH, L"\\click_coordinates.txt");
     
-    // 3. 파일 열기 (없으면 생성, 있으면 뒤에 이어쓰기)
+    // 파일 열기 (없으면 생성, 있으면 뒤에 이어쓰기)
     HANDLE hFile = CreateFileW(
         filePath,
         FILE_APPEND_DATA,
@@ -37,23 +36,32 @@ void SaveClickPosition(int x, int y) {
         return;
     }
     
-    // 4. 클릭 횟수 (프로그램 실행 중 유지)
-    static int clickCount = 1;
-    
-    // 5. 저장 텍스트: "point1=100,200\r\n"
+    // 저장 텍스트: "point1=100,200\r\n"
     wchar_t buffer[256];
-    wsprintfW(buffer, L"point%d=%d,%d\r\n", clickCount++, x, y);
+    wsprintfW(buffer, L"point%d=%d,%d\r\n", g_clickCount++, x, y);
     
-    // 6. 파일에 쓰기
+    // 파일에 쓰기
     DWORD bytesWritten;
     WriteFile(hFile, buffer, wcslen(buffer) * sizeof(wchar_t), &bytesWritten, NULL);
-    
-    // 7. 파일 닫기
     CloseHandle(hFile);
     
-    // 8. 성공 알림 (제목 표시줄에 표시)
-    SetWindowTextW(g_hWnd, L"✅ 바탕화면에 저장됨!");
-    SetTimer(g_hWnd, 2, 1500, NULL);
+    // 성공 알림
+    SetWindowTextW(g_hWnd, L"✅ 저장됨!");
+    SetTimer(g_hWnd, 2, 1000, NULL);
+}
+
+// 🖱️ 전역 마우스 훅 프로시저 (모든 창에서 마우스 이벤트 감지)
+LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode >= 0 && wParam == WM_LBUTTONDOWN) {
+        // 마우스 왼쪽 버튼 클릭 감지
+        MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
+        if (pMouseStruct) {
+            // 클릭한 위치의 화면 좌표 저장
+            SaveClickPosition(pMouseStruct->pt.x, pMouseStruct->pt.y);
+        }
+    }
+    // 다음 훅으로 이벤트 전달 (중요: 시스템 동작을 방해하지 않음)
+    return CallNextHookEx(g_hMouseHook, nCode, wParam, lParam);
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -93,17 +101,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
             break;
         }
-        case WM_LBUTTONDOWN: {
-            int x = GET_X_LPARAM(lParam);
-            int y = GET_Y_LPARAM(lParam);
-            
-            POINT pt = { x, y };
-            ClientToScreen(hWnd, &pt);
-            
-            SaveClickPosition(pt.x, pt.y);
-            break;
-        }
         case WM_DESTROY:
+            // 프로그램 종료 시 훅 해제
+            if (g_hMouseHook) {
+                UnhookWindowsHookEx(g_hMouseHook);
+                g_hMouseHook = NULL;
+            }
             PostQuitMessage(0);
             break;
         default:
@@ -113,6 +116,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // 1. 윈도우 클래스 등록
     WNDCLASSW wc = {};
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
@@ -121,6 +125,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hIcon = LoadIcon(NULL, IDI_INFORMATION);
     RegisterClassW(&wc);
 
+    // 2. 윈도우 생성
     g_hWnd = CreateWindowW(
         L"MouseTrackerClass", L"마우스 좌표 트래커",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
@@ -132,8 +137,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
 
+    // 3. 전역 마우스 훅 설치 (WH_MOUSE_LL)
+    g_hMouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHookProc, hInstance, 0);
+    if (g_hMouseHook == NULL) {
+        // 훅 설치 실패 시 메시지 표시
+        SetWindowTextW(g_hWnd, L"❌ 훅 설치 실패!");
+        // 그래도 프로그램은 계속 실행 (창 내부 클릭은 동작함)
+    } else {
+        SetWindowTextW(g_hWnd, L"🔄 전역 감지 활성화");
+        SetTimer(g_hWnd, 2, 1500, NULL);
+    }
+
+    // 4. 좌표 갱신 타이머
     SetTimer(g_hWnd, 1, 50, NULL);
 
+    // 5. 메시지 루프
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
