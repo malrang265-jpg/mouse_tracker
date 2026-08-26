@@ -116,7 +116,7 @@ void SaveConfig() {
     if (g_hotkeyModifiers & MOD_SHIFT) modStr += L"Shift+";
     if (g_hotkeyModifiers & MOD_ALT) modStr += L"Alt+";
     if (g_hotkeyModifiers & MOD_WIN) modStr += L"Win+";
-    if (!modStr.empty()) modStr.pop_back();  // 마지막 '+' 제거
+    if (!modStr.empty()) modStr.pop_back();
     
     // Key 문자열 생성
     std::wstring keyStr;
@@ -191,7 +191,6 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             g_hConfigDlg = hDlg;
             g_isWaitingForKey = false;
             
-            // 현재 단축키 표시
             wchar_t text[256];
             std::wstring modStr;
             if (g_hotkeyModifiers & MOD_CONTROL) modStr += L"Ctrl+";
@@ -212,19 +211,18 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             
             wsprintfW(text, L"현재 단축키: %s + %s", modStr.c_str(), keyStr.c_str());
             SetDlgItemTextW(hDlg, 1001, text);
-            
             SetDlgItemTextW(hDlg, 1002, L"변경할 단축키를 누르세요...");
             EnableWindow(GetDlgItem(hDlg, 1003), FALSE);
             return TRUE;
         }
         case WM_COMMAND: {
-            if (LOWORD(wParam) == 1002) {  // 변경 버튼
+            if (LOWORD(wParam) == 1002) {
                 g_isWaitingForKey = true;
                 SetDlgItemTextW(hDlg, 1002, L"키를 입력하세요...");
                 SetDlgItemTextW(hDlg, 1001, L"단축키를 누르면 자동 등록됩니다");
                 EnableWindow(GetDlgItem(hDlg, 1003), FALSE);
                 SetFocus(hDlg);
-            } else if (LOWORD(wParam) == 1003) {  // 확인 버튼
+            } else if (LOWORD(wParam) == 1003) {
                 SaveConfig();
                 UnregisterHotKey(g_hWnd, 1);
                 RegisterHotKey(g_hWnd, 1, g_hotkeyModifiers, g_hotkeyKey);
@@ -299,7 +297,7 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
                              x, y, 0, hWnd, NULL);
     DestroyMenu(hMenu);
     
-    if (cmd == 1001) {  // 설정
+    if (cmd == 1001) {
         if (g_hConfigDlg == NULL) {
             HWND hDlg = CreateWindowExW(0, L"#32770", L"단축키 설정",
                                        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
@@ -323,7 +321,7 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
         } else {
             SetForegroundWindow(g_hConfigDlg);
         }
-    } else if (cmd == 1002) {  // 종료
+    } else if (cmd == 1002) {
         if (g_hMouseHook) {
             UnhookWindowsHookEx(g_hMouseHook);
             g_hMouseHook = NULL;
@@ -401,8 +399,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = L"MouseTrackerClass";
     wc.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(1));
-    // ✅ 수정된 부분: IDI_INFORMATION을 LPCWSTR로 캐스팅
-    if (!wc.hIcon) wc.hIcon = LoadIconW(NULL, MAKEINTRESOURCEW(IDI_INFORMATION));
+    // ✅ 수정 완료: IDI_INFORMATION을 LPCWSTR로 명시적 캐스팅
+    if (!wc.hIcon) wc.hIcon = LoadIconW(NULL, (LPCWSTR)IDI_INFORMATION);
     RegisterClassW(&wc);
 
     g_hWnd = CreateWindowW(L"MouseTrackerClass", L"마우스 좌표 트래커",
