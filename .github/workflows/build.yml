@@ -10,11 +10,17 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Compile with MinGW (g++)
-        run: |
-          C:\msys64\mingw64\bin\g++ -static -o MouseTracker.exe main.cpp -lgdi32 "-Wl,-subsystem,windows"
-          
+
+      # MinGW-w64 설치 및 PATH 설정
+      - name: Setup MinGW
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+
+      # g++로 컴파일 (이제 g++을 바로 사용 가능)
+      - name: Compile
+        run: g++ -static -o MouseTracker.exe main.cpp -lgdi32 -Wl,-subsystem,windows
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
