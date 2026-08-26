@@ -1,4 +1,4 @@
-name: Build EXE
+name: Build EXE (C++)
 
 on:
   push:
@@ -11,16 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-      
-      - name: Publish EXE
-        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
-      
+      - name: Compile with MinGW (g++)
+        run: |
+          C:\msys64\mingw64\bin\g++ -static -o MouseTracker.exe main.cpp -lgdi32 -Wl,-subsystem,windows
+          
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: MouseTracker
-          path: ./publish/*.exe
+          path: ./MouseTracker.exe
