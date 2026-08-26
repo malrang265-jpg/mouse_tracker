@@ -122,7 +122,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hInstance = hInstance;
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = L"MouseTrackerClass";
-    wc.hIcon = LoadIcon(NULL, IDI_INFORMATION);
     RegisterClassW(&wc);
 
     // 2. 윈도우 생성
