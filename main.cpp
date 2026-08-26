@@ -1,59 +1,59 @@
 #include <windows.h>
 #include <windowsx.h>
+#include <shlobj.h>     // ✅ SHGetFolderPathW 사용을 위해 추가
 #include <string>
 #include <ctime>
 
 HWND g_hWnd;
 
-// 📝 Windows API를 사용하여 좌표를 파일에 저장 (로케일 문제 없음)
+// 📝 바탕화면에 좌표를 저장하는 함수
 void SaveClickPosition(int x, int y) {
-    // 1. 실행 파일 경로 가져오기
     wchar_t filePath[MAX_PATH];
-    GetModuleFileNameW(NULL, filePath, MAX_PATH);
     
-    // 2. 파일명 제거하고 디렉토리 경로만 남기기
-    wchar_t* lastSlash = wcsrchr(filePath, L'\\');
-    if (lastSlash) {
-        *(lastSlash + 1) = L'\0';
+    // 1. 바탕화면 경로 가져오기 (항상 쓰기 가능)
+    HRESULT hr = SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, 0, filePath);
+    if (FAILED(hr)) {
+        // 바탕화면 경로를 못 가져오면 임시 폴더로 대체
+        GetTempPathW(MAX_PATH, filePath);
     }
-    // 3. 파일명 추가
-    wcscat_s(filePath, MAX_PATH, L"click_coordinates.txt");
     
-    // 4. 파일 열기 (없으면 생성, 있으면 뒤에 이어쓰기)
+    // 2. 파일명 추가: "C:\Users\사용자\Desktop\click_coordinates.txt"
+    wcscat_s(filePath, MAX_PATH, L"\\click_coordinates.txt");
+    
+    // 3. 파일 열기 (없으면 생성, 있으면 뒤에 이어쓰기)
     HANDLE hFile = CreateFileW(
         filePath,
-        FILE_APPEND_DATA,          // 뒤에 이어쓰기 모드
-        FILE_SHARE_READ,           // 다른 프로세스가 읽을 수 있음
+        FILE_APPEND_DATA,
+        FILE_SHARE_READ,
         NULL,
-        OPEN_ALWAYS,               // 없으면 생성, 있으면 열기
+        OPEN_ALWAYS,
         FILE_ATTRIBUTE_NORMAL,
         NULL
     );
     
     if (hFile == INVALID_HANDLE_VALUE) {
-        // 파일 열기 실패 시 제목에 표시
         SetWindowTextW(g_hWnd, L"❌ 파일 오류!");
         SetTimer(g_hWnd, 2, 1500, NULL);
         return;
     }
     
-    // 5. 클릭 횟수 (프로그램 실행 중 유지)
+    // 4. 클릭 횟수 (프로그램 실행 중 유지)
     static int clickCount = 1;
     
-    // 6. 저장할 텍스트 생성: "point1=100,200\r\n"
+    // 5. 저장 텍스트: "point1=100,200\r\n"
     wchar_t buffer[256];
     wsprintfW(buffer, L"point%d=%d,%d\r\n", clickCount++, x, y);
     
-    // 7. 파일에 쓰기
+    // 6. 파일에 쓰기
     DWORD bytesWritten;
     WriteFile(hFile, buffer, wcslen(buffer) * sizeof(wchar_t), &bytesWritten, NULL);
     
-    // 8. 파일 닫기
+    // 7. 파일 닫기
     CloseHandle(hFile);
     
-    // 9. 성공 알림
-    SetWindowTextW(g_hWnd, L"✅ 저장됨!");
-    SetTimer(g_hWnd, 2, 1000, NULL);
+    // 8. 성공 알림 (제목 표시줄에 표시)
+    SetWindowTextW(g_hWnd, L"✅ 바탕화면에 저장됨!");
+    SetTimer(g_hWnd, 2, 1500, NULL);
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -88,22 +88,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             if (wParam == 1) {
                 InvalidateRect(hWnd, NULL, TRUE);
             } else if (wParam == 2) {
-                // 제목 복원
                 SetWindowTextW(hWnd, L"마우스 좌표 트래커");
                 KillTimer(hWnd, 2);
             }
             break;
         }
         case WM_LBUTTONDOWN: {
-            // 마우스 클릭 이벤트
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
             
-            // 클라이언트 좌표 → 화면 절대 좌표로 변환
             POINT pt = { x, y };
             ClientToScreen(hWnd, &pt);
             
-            // 파일에 저장 (point1, point2, ...)
             SaveClickPosition(pt.x, pt.y);
             break;
         }
