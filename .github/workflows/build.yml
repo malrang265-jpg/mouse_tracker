@@ -18,10 +18,17 @@ jobs:
           install: mingw-w64-x86_64-gcc
           update: true
 
+      # ✅ 리소스 파일(.rc)을 .o 파일로 컴파일
+      - name: Compile Resource
+        shell: msys2 {0}
+        run: |
+          windres resource.rc -O coff -o resource.o
+
+      # ✅ main.cpp + resource.o 함께 컴파일 (아이콘 포함)
       - name: Compile
         shell: msys2 {0}
         run: |
-          g++ -static -o MouseTracker.exe main.cpp -lgdi32 -Wl,-subsystem,windows
+          g++ -static -o MouseTracker.exe main.cpp resource.o -lgdi32 -Wl,-subsystem,windows
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
