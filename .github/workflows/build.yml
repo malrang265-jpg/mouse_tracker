@@ -1,6 +1,6 @@
 name: Build EXE (C++)
 
-：:
+::
   push:
     분기들: [ main ]
   workflow_dispatch:
