@@ -178,7 +178,6 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         } else if (wParam == WM_MBUTTONDOWN && g_saveOnMiddleClick) {
             SaveClickPosition(pt.x, pt.y);
         } else if (wParam == WM_MOUSEHWHEEL && g_saveOnWheelTilt) {
-            // 휠 틸트(좌우 스크롤) 발생 시 좌표 저장
             SaveClickPosition(pt.x, pt.y);
         }
     }
@@ -212,23 +211,21 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             else keyStr = L"???";
             
             wsprintfW(text, L"현재 단축키: %s + %s", modStr.c_str(), keyStr.c_str());
-            SetDlgItemTextW(hDlg, 1001, text);  // ID 1001: 현재 단축키 표시 레이블
+            SetDlgItemTextW(hDlg, 1001, text);
             
             SetDlgItemTextW(hDlg, 1002, L"변경할 단축키를 누르세요...");
-            EnableWindow(GetDlgItem(hDlg, 1003), FALSE);  // ID 1003: 확인 버튼 비활성화
+            EnableWindow(GetDlgItem(hDlg, 1003), FALSE);
             return TRUE;
         }
         case WM_COMMAND: {
-            if (LOWORD(wParam) == 1002) {  // 변경 버튼 클릭
+            if (LOWORD(wParam) == 1002) {  // 변경 버튼
                 g_isWaitingForKey = true;
                 SetDlgItemTextW(hDlg, 1002, L"키를 입력하세요...");
                 SetDlgItemTextW(hDlg, 1001, L"단축키를 누르면 자동 등록됩니다");
                 EnableWindow(GetDlgItem(hDlg, 1003), FALSE);
                 SetFocus(hDlg);
             } else if (LOWORD(wParam) == 1003) {  // 확인 버튼
-                // 현재 설정 저장
                 SaveConfig();
-                // 단축키 재등록
                 UnregisterHotKey(g_hWnd, 1);
                 RegisterHotKey(g_hWnd, 1, g_hotkeyModifiers, g_hotkeyKey);
                 DestroyWindow(hDlg);
@@ -241,7 +238,6 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
         }
         case WM_KEYDOWN: {
             if (g_isWaitingForKey) {
-                // 입력된 키 저장
                 int vkCode = (int)wParam;
                 int mods = 0;
                 if (GetKeyState(VK_CONTROL) & 0x8000) mods |= MOD_CONTROL;
@@ -249,7 +245,6 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 if (GetKeyState(VK_MENU) & 0x8000) mods |= MOD_ALT;
                 if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) mods |= MOD_WIN;
                 
-                // 유효한 키인지 확인
                 if ((vkCode >= 'A' && vkCode <= 'Z') ||
                     (vkCode >= VK_F1 && vkCode <= VK_F12) ||
                     vkCode == VK_SPACE || vkCode == VK_TAB ||
@@ -259,7 +254,6 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     g_hotkeyKey = vkCode;
                     g_isWaitingForKey = false;
                     
-                    // UI 업데이트
                     std::wstring modStr;
                     if (g_hotkeyModifiers & MOD_CONTROL) modStr += L"Ctrl+";
                     if (g_hotkeyModifiers & MOD_SHIFT) modStr += L"Shift+";
@@ -307,13 +301,11 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
     
     if (cmd == 1001) {  // 설정
         if (g_hConfigDlg == NULL) {
-            // 간단한 다이얼로그 생성 (윈도우 클래스 등록)
             HWND hDlg = CreateWindowExW(0, L"#32770", L"단축키 설정",
                                        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
                                        CW_USEDEFAULT, CW_USEDEFAULT, 350, 150,
                                        hWnd, NULL, GetModuleHandle(NULL), NULL);
             if (hDlg) {
-                // 다이얼로그에 컨트롤 추가 (Static, Button)
                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER,
                              20, 20, 300, 25, hDlg, (HMENU)1001, NULL, NULL);
                 CreateWindowW(L"BUTTON", L"변경", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
@@ -323,9 +315,7 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
                 CreateWindowW(L"BUTTON", L"취소", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                              230, 60, 80, 30, hDlg, (HMENU)IDCANCEL, NULL, NULL);
                 
-                // 윈도우 프로시저 설정
                 SetWindowLongPtrW(hDlg, GWLP_WNDPROC, (LONG_PTR)ConfigDlgProc);
-                // WM_INITDIALOG 대신 WM_CREATE에서 초기화 처리
                 SendMessageW(hDlg, WM_INITDIALOG, 0, 0);
                 ShowWindow(hDlg, SW_SHOW);
                 UpdateWindow(hDlg);
@@ -342,7 +332,6 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
     }
 }
 
-// 📋 메인 윈도우 프로시저
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_PAINT: {
@@ -403,7 +392,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
-// 🚀 프로그램 진입점
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     LoadConfig();
     
@@ -413,7 +401,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = L"MouseTrackerClass";
     wc.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(1));
-    if (!wc.hIcon) wc.hIcon = LoadIconW(NULL, IDI_INFORMATION);
+    // ✅ 수정된 부분: IDI_INFORMATION을 LPCWSTR로 캐스팅
+    if (!wc.hIcon) wc.hIcon = LoadIconW(NULL, MAKEINTRESOURCEW(IDI_INFORMATION));
     RegisterClassW(&wc);
 
     g_hWnd = CreateWindowW(L"MouseTrackerClass", L"마우스 좌표 트래커",
@@ -430,14 +419,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
 
-    // 마우스 훅 설치
     g_hMouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHookProc, hInstance, 0);
     if (!g_hMouseHook) {
         SetWindowTextW(g_hWnd, L"❌ 마우스 훅 실패");
         SetTimer(g_hWnd, 2, 1500, NULL);
     }
 
-    // 단축키 등록
     RegisterHotKey(g_hWnd, 1, g_hotkeyModifiers, g_hotkeyKey);
     SetTimer(g_hWnd, 1, 50, NULL);
 
