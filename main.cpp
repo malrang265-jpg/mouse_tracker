@@ -1,49 +1,38 @@
 #include <windows.h>
+#include <windowsx.h>   // ✅ GET_X_LPARAM, GET_Y_LPARAM 사용을 위해 추가
 #include <string>
 #include <fstream>
 #include <ctime>
 
 HWND g_hWnd;
 
-// 📝 클릭 좌표를 파일에 기록하는 함수
+// 📝 클릭 좌표를 파일에 기록하는 함수 (point1, point2, ... 순서대로)
 void SaveClickPosition(int x, int y) {
     // 실행 파일과 같은 폴더에 "click_coordinates.txt" 파일 생성
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(NULL, exePath, MAX_PATH);
     
-    // 실행 파일 경로에서 디렉토리 경로만 추출
     wchar_t* lastSlash = wcsrchr(exePath, L'\\');
     if (lastSlash) {
-        *(lastSlash + 1) = L'\0';  // 파일명 제거하고 디렉토리 경로만 남김
+        *(lastSlash + 1) = L'\0';
     }
     
-    // 전체 파일 경로 생성: 디렉토리 + "click_coordinates.txt"
     std::wstring filePath = std::wstring(exePath) + L"click_coordinates.txt";
     
-    // 파일을 Append 모드로 열기 (없으면 새로 생성)
-    std::wofstream file(filePath, std::ios::app);
+    // ✅ MinGW 호환을 위해 c_str()로 변환하여 전달
+    std::wofstream file(filePath.c_str(), std::ios::app);
     if (file.is_open()) {
-        // 현재 시간 가져오기
-        time_t now = time(NULL);
-        struct tm timeInfo;
-        localtime_s(&timeInfo, &now);
+        // ✅ 클릭 횟수를 세는 정적 변수 (프로그램 실행 중 계속 유지)
+        static int clickCount = 1;
         
-        // [시간] X: 좌표  Y: 좌표 형식으로 기록
-        file << L"["
-             << (timeInfo.tm_year + 1900) << L"-"
-             << (timeInfo.tm_mon + 1) << L"-"
-             << timeInfo.tm_mday << L" "
-             << timeInfo.tm_hour << L":"
-             << timeInfo.tm_min << L":"
-             << timeInfo.tm_sec << L"] "
-             << L"X: " << x << L"  Y: " << y << std::endl;
+        // ✅ point1=100,200  형식으로 저장
+        file << L"point" << clickCount++ << L"=" << x << L"," << y << std::endl;
         
         file.close();
         
-        // 📢 디버그용: 파일 저장 성공을 알림 (선택사항)
-        // 창 제목에 잠시 표시해도 좋음
+        // 제목 표시줄에 저장 성공 알림
         SetWindowTextW(g_hWnd, L"✅ 좌표 저장됨!");
-        SetTimer(g_hWnd, 2, 1000, NULL);  // 1초 후 원래 제목으로 복원
+        SetTimer(g_hWnd, 2, 1000, NULL);
     }
 }
 
@@ -77,26 +66,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         }
         case WM_TIMER: {
             if (wParam == 1) {
-                // 50ms마다 좌표 갱신
                 InvalidateRect(hWnd, NULL, TRUE);
             } else if (wParam == 2) {
-                // 1초 후 제목 복원
                 SetWindowTextW(hWnd, L"마우스 좌표 트래커");
                 KillTimer(hWnd, 2);
             }
             break;
         }
         case WM_LBUTTONDOWN: {
-            // 🖱️ 마우스 왼쪽 버튼 클릭 이벤트
-            // lParam의 하위 16비트: X 좌표, 상위 16비트: Y 좌표
+            // 🖱️ 마우스 왼쪽 버튼 클릭
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
             
-            // 클라이언트 좌표를 화면 좌표로 변환 (절대 좌표로 저장)
+            // 클라이언트 좌표를 화면 절대 좌표로 변환
             POINT pt = { x, y };
             ClientToScreen(hWnd, &pt);
             
-            // 파일에 저장
+            // 파일에 저장 (point1, point2, ...)
             SaveClickPosition(pt.x, pt.y);
             break;
         }
