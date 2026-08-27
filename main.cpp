@@ -22,7 +22,16 @@ bool g_saveOnWheelTilt = true;
 HWND g_hConfigDlg = NULL;
 bool g_isWaitingForKey = false;
 
-// 📖 설정 파일 읽기 (UTF-8, BOM 무시)
+// 설정 다이얼로그 컨트롤 ID
+#define IDC_STATIC_HOTKEY    1001
+#define IDC_BTN_CHANGE       1002
+#define IDC_BTN_OK           1003
+#define IDC_BTN_CANCEL       1004
+#define IDC_CHK_LEFT         101
+#define IDC_CHK_MIDDLE       102
+#define IDC_CHK_WHEEL        103
+
+// 📖 설정 파일 읽기
 void LoadConfig() {
     wchar_t configPath[MAX_PATH];
     GetModuleFileNameW(NULL, configPath, MAX_PATH);
@@ -30,7 +39,6 @@ void LoadConfig() {
     if (lastSlash) *(lastSlash + 1) = L'\0';
     wcscat_s(configPath, MAX_PATH, L"config.ini");
     
-    // char 기반 ifstream으로 읽기 (인코딩 문제 없음)
     std::ifstream file(configPath);
     if (!file.is_open()) return;
     
@@ -44,8 +52,6 @@ void LoadConfig() {
         
         std::string keyName = line.substr(0, eqPos);
         std::string value = line.substr(eqPos + 1);
-        
-        // 공백 제거
         keyName.erase(0, keyName.find_first_not_of(" \t\r\n"));
         keyName.erase(keyName.find_last_not_of(" \t\r\n") + 1);
         value.erase(0, value.find_first_not_of(" \t\r\n"));
@@ -58,7 +64,6 @@ void LoadConfig() {
         else if (keyName == "SaveOnWheelTilt") wheelTilt = value;
     }
     
-    // Modifiers 파싱 (string → int)
     if (!modifiers.empty()) {
         int mod = 0;
         std::istringstream ss(modifiers);
@@ -74,21 +79,18 @@ void LoadConfig() {
         if (mod != 0) g_hotkeyModifiers = mod;
     }
     
-    // Key 파싱 (string → int)
     if (!key.empty()) {
         if (key == "Space") g_hotkeyKey = VK_SPACE;
         else if (key == "Tab") g_hotkeyKey = VK_TAB;
         else if (key == "Enter") g_hotkeyKey = VK_RETURN;
         else if (key == "Escape") g_hotkeyKey = VK_ESCAPE;
-        else if (key.length() == 1 && isalpha(key[0])) {
-            g_hotkeyKey = toupper(key[0]);
-        } else if (key.find("F") == 0 && key.length() <= 3) {
+        else if (key.length() == 1 && isalpha(key[0])) g_hotkeyKey = toupper(key[0]);
+        else if (key.find("F") == 0 && key.length() <= 3) {
             int num = std::stoi(key.substr(1));
             if (num >= 1 && num <= 12) g_hotkeyKey = VK_F1 + num - 1;
         }
     }
     
-    // 불리언 값 파싱
     auto parseBool = [](const std::string& str) -> bool {
         return (str == "Yes" || str == "yes" || str == "True" || str == "true");
     };
@@ -97,7 +99,7 @@ void LoadConfig() {
     if (!wheelTilt.empty()) g_saveOnWheelTilt = parseBool(wheelTilt);
 }
 
-// 💾 설정 파일 저장 (UTF-8, BOM 없음)
+// 💾 설정 파일 저장
 void SaveConfig() {
     wchar_t configPath[MAX_PATH];
     GetModuleFileNameW(NULL, configPath, MAX_PATH);
@@ -108,7 +110,6 @@ void SaveConfig() {
     std::ofstream file(configPath);
     if (!file.is_open()) return;
     
-    // Modifier 문자열 생성
     std::string modStr;
     if (g_hotkeyModifiers & MOD_CONTROL) modStr += "Ctrl+";
     if (g_hotkeyModifiers & MOD_SHIFT) modStr += "Shift+";
@@ -116,7 +117,6 @@ void SaveConfig() {
     if (g_hotkeyModifiers & MOD_WIN) modStr += "Win+";
     if (!modStr.empty()) modStr.pop_back();
     
-    // Key 문자열 생성
     std::string keyStr;
     if (g_hotkeyKey >= 'A' && g_hotkeyKey <= 'Z') keyStr = (char)g_hotkeyKey;
     else if (g_hotkeyKey == VK_SPACE) keyStr = "Space";
@@ -186,7 +186,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             g_hConfigDlg = hDlg;
             g_isWaitingForKey = false;
             
-            // 현재 단축키 표시 (ID 1001)
+            // 단축키 표시 업데이트
             wchar_t text[256];
             std::wstring modStr;
             if (g_hotkeyModifiers & MOD_CONTROL) modStr += L"Ctrl+";
@@ -206,39 +206,50 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             else keyStr = L"???";
             
             wsprintfW(text, L"현재 단축키: %s + %s", modStr.c_str(), keyStr.c_str());
-            SetDlgItemTextW(hDlg, 1001, text);
-            SetDlgItemTextW(hDlg, 1002, L"변경");
-            EnableWindow(GetDlgItem(hDlg, 1003), TRUE);
+            SetDlgItemTextW(hDlg, IDC_STATIC_HOTKEY, text);
             
-            // 체크박스 상태 설정 (ID 101, 102, 103)
-            SendDlgItemMessageW(hDlg, 101, BM_SETCHECK, g_saveOnMouseClick ? BST_CHECKED : BST_UNCHECKED, 0);
-            SendDlgItemMessageW(hDlg, 102, BM_SETCHECK, g_saveOnMiddleClick ? BST_CHECKED : BST_UNCHECKED, 0);
-            SendDlgItemMessageW(hDlg, 103, BM_SETCHECK, g_saveOnWheelTilt ? BST_CHECKED : BST_UNCHECKED, 0);
+            // 체크박스 상태 설정
+            SendDlgItemMessageW(hDlg, IDC_CHK_LEFT, BM_SETCHECK, g_saveOnMouseClick ? BST_CHECKED : BST_UNCHECKED, 0);
+            SendDlgItemMessageW(hDlg, IDC_CHK_MIDDLE, BM_SETCHECK, g_saveOnMiddleClick ? BST_CHECKED : BST_UNCHECKED, 0);
+            SendDlgItemMessageW(hDlg, IDC_CHK_WHEEL, BM_SETCHECK, g_saveOnWheelTilt ? BST_CHECKED : BST_UNCHECKED, 0);
+            
             return TRUE;
         }
         case WM_COMMAND: {
             int id = LOWORD(wParam);
+            int code = HIWORD(wParam);
             
-            if (id == 1002) {  // 변경 버튼
+            if (id == IDC_BTN_CHANGE) {
                 g_isWaitingForKey = true;
-                SetDlgItemTextW(hDlg, 1002, L"키 입력 중...");
-                SetDlgItemTextW(hDlg, 1001, L"원하는 단축키를 눌러주세요");
-                EnableWindow(GetDlgItem(hDlg, 1003), FALSE);
+                SetDlgItemTextW(hDlg, IDC_BTN_CHANGE, L"키 입력 중...");
+                SetDlgItemTextW(hDlg, IDC_STATIC_HOTKEY, L"원하는 단축키를 눌러주세요");
+                EnableWindow(GetDlgItem(hDlg, IDC_BTN_OK), FALSE);
                 SetFocus(hDlg);
-            } else if (id == 1003) {  // 확인 버튼
+            } else if (id == IDC_BTN_OK) {
                 // 체크박스 상태 저장
-                g_saveOnMouseClick = (SendDlgItemMessageW(hDlg, 101, BM_GETCHECK, 0, 0) == BST_CHECKED);
-                g_saveOnMiddleClick = (SendDlgItemMessageW(hDlg, 102, BM_GETCHECK, 0, 0) == BST_CHECKED);
-                g_saveOnWheelTilt = (SendDlgItemMessageW(hDlg, 103, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                g_saveOnMouseClick = (SendDlgItemMessageW(hDlg, IDC_CHK_LEFT, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                g_saveOnMiddleClick = (SendDlgItemMessageW(hDlg, IDC_CHK_MIDDLE, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                g_saveOnWheelTilt = (SendDlgItemMessageW(hDlg, IDC_CHK_WHEEL, BM_GETCHECK, 0, 0) == BST_CHECKED);
                 
                 SaveConfig();
                 UnregisterHotKey(g_hWnd, 1);
                 RegisterHotKey(g_hWnd, 1, g_hotkeyModifiers, g_hotkeyKey);
                 DestroyWindow(hDlg);
                 g_hConfigDlg = NULL;
-            } else if (id == IDCANCEL) {  // 취소 버튼
+            } else if (id == IDC_BTN_CANCEL) {
                 DestroyWindow(hDlg);
                 g_hConfigDlg = NULL;
+            } else if (id >= IDC_CHK_LEFT && id <= IDC_CHK_WHEEL) {
+                // 체크박스 클릭 시 즉시 반영 (UI 피드백)
+                // 실제 저장은 OK 버튼에서 처리
+                if (id == IDC_CHK_LEFT) {
+                    g_saveOnMouseClick = (SendDlgItemMessageW(hDlg, IDC_CHK_LEFT, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                } else if (id == IDC_CHK_MIDDLE) {
+                    g_saveOnMiddleClick = (SendDlgItemMessageW(hDlg, IDC_CHK_MIDDLE, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                } else if (id == IDC_CHK_WHEEL) {
+                    g_saveOnWheelTilt = (SendDlgItemMessageW(hDlg, IDC_CHK_WHEEL, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                }
+                // 제목 표시줄에 실시간 상태 표시 (선택사항)
             }
             break;
         }
@@ -251,6 +262,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                 if (GetKeyState(VK_MENU) & 0x8000) mods |= MOD_ALT;
                 if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) mods |= MOD_WIN;
                 
+                // 유효한 단축키만 허용
                 if ((vkCode >= 'A' && vkCode <= 'Z') ||
                     (vkCode >= VK_F1 && vkCode <= VK_F12) ||
                     vkCode == VK_SPACE || vkCode == VK_TAB ||
@@ -260,6 +272,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     g_hotkeyKey = vkCode;
                     g_isWaitingForKey = false;
                     
+                    // 표시 업데이트
                     std::wstring modStr;
                     if (g_hotkeyModifiers & MOD_CONTROL) modStr += L"Ctrl+";
                     if (g_hotkeyModifiers & MOD_SHIFT) modStr += L"Shift+";
@@ -278,9 +291,9 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
                     
                     wchar_t text[256];
                     wsprintfW(text, L"설정 완료: %s + %s", modStr.c_str(), keyStr.c_str());
-                    SetDlgItemTextW(hDlg, 1001, text);
-                    SetDlgItemTextW(hDlg, 1002, L"변경");
-                    EnableWindow(GetDlgItem(hDlg, 1003), TRUE);
+                    SetDlgItemTextW(hDlg, IDC_STATIC_HOTKEY, text);
+                    SetDlgItemTextW(hDlg, IDC_BTN_CHANGE, L"변경");
+                    EnableWindow(GetDlgItem(hDlg, IDC_BTN_OK), TRUE);
                 }
                 return TRUE;
             }
@@ -294,7 +307,76 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
     return FALSE;
 }
 
-// 📋 컨텍스트 메뉴 표시
+// 📋 설정 다이얼로그 생성
+void ShowConfigDialog(HWND hWnd) {
+    if (g_hConfigDlg != NULL) {
+        SetForegroundWindow(g_hConfigDlg);
+        return;
+    }
+    
+    // 다이얼로그 생성
+    HWND hDlg = CreateWindowExW(
+        0, L"#32770", L"설정",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
+        CW_USEDEFAULT, CW_USEDEFAULT, 420, 260,
+        hWnd, NULL, GetModuleHandle(NULL), NULL
+    );
+    if (!hDlg) return;
+    
+    // --- 컨트롤 생성 ---
+    // 1. 단축키 표시 (IDC_STATIC_HOTKEY, 1001)
+    CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER,
+                  20, 18, 380, 25, hDlg, (HMENU)IDC_STATIC_HOTKEY, NULL, NULL);
+    
+    // 2. 변경 버튼 (IDC_BTN_CHANGE, 1002)
+    CreateWindowW(L"BUTTON", L"변경", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                  160, 52, 100, 28, hDlg, (HMENU)IDC_BTN_CHANGE, NULL, NULL);
+    
+    // 3. 구분선
+    CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
+                  20, 95, 380, 2, hDlg, NULL, NULL, NULL);
+    
+    // 4. 마우스 설정 레이블
+    CreateWindowW(L"STATIC", L"🖱️ 마우스 입력 저장", WS_CHILD | WS_VISIBLE | SS_CENTER,
+                  20, 108, 380, 20, hDlg, NULL, NULL, NULL);
+    
+    // 5. 왼쪽 클릭 체크박스 (IDC_CHK_LEFT, 101)
+    CreateWindowW(L"BUTTON", L"왼쪽 클릭", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                  40, 138, 100, 22, hDlg, (HMENU)IDC_CHK_LEFT, NULL, NULL);
+    
+    // 6. 가운데 클릭 체크박스 (IDC_CHK_MIDDLE, 102)
+    CreateWindowW(L"BUTTON", L"가운데 클릭 (휠)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                  160, 138, 120, 22, hDlg, (HMENU)IDC_CHK_MIDDLE, NULL, NULL);
+    
+    // 7. 휠 틸트 체크박스 (IDC_CHK_WHEEL, 103)
+    CreateWindowW(L"BUTTON", L"휠 틸트 (좌우)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                  300, 138, 100, 22, hDlg, (HMENU)IDC_CHK_WHEEL, NULL, NULL);
+    
+    // 8. 확인 버튼 (IDC_BTN_OK, 1003)
+    CreateWindowW(L"BUTTON", L"확인", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                  110, 185, 80, 30, hDlg, (HMENU)IDC_BTN_OK, NULL, NULL);
+    
+    // 9. 취소 버튼 (IDC_BTN_CANCEL, 1004)
+    CreateWindowW(L"BUTTON", L"취소", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                  220, 185, 80, 30, hDlg, (HMENU)IDC_BTN_CANCEL, NULL, NULL);
+    
+    // 10. 하단 설명
+    CreateWindowW(L"STATIC", L"※ 확인 버튼을 눌러야 설정이 저장됩니다",
+                  WS_CHILD | WS_VISIBLE | SS_CENTER,
+                  20, 228, 380, 18, hDlg, NULL, NULL, NULL);
+    
+    // 다이얼로그 프로시저 설정
+    SetWindowLongPtrW(hDlg, GWLP_WNDPROC, (LONG_PTR)ConfigDlgProc);
+    
+    // WM_INITDIALOG 전송
+    SendMessageW(hDlg, WM_INITDIALOG, 0, 0);
+    
+    // 화면에 표시
+    ShowWindow(hDlg, SW_SHOW);
+    UpdateWindow(hDlg);
+}
+
+// 📋 컨텍스트 메뉴
 void ShowContextMenu(HWND hWnd, int x, int y) {
     HMENU hMenu = CreatePopupMenu();
     AppendMenuW(hMenu, MF_STRING, 1001, L"⚙️ 설정");
@@ -306,59 +388,7 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
     DestroyMenu(hMenu);
     
     if (cmd == 1001) {
-        if (g_hConfigDlg == NULL) {
-            HWND hDlg = CreateWindowExW(0, L"#32770", L"설정",
-                                       WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                                       CW_USEDEFAULT, CW_USEDEFAULT, 450, 260,
-                                       hWnd, NULL, GetModuleHandle(NULL), NULL);
-            if (hDlg) {
-                // 단축키 표시 (ID 1001)
-                CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER,
-                             20, 15, 410, 25, hDlg, (HMENU)1001, NULL, NULL);
-                
-                // 변경 버튼 (ID 1002)
-                CreateWindowW(L"BUTTON", L"변경", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                             175, 50, 100, 28, hDlg, (HMENU)1002, NULL, NULL);
-                
-                // 구분선
-                CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
-                             20, 95, 410, 2, hDlg, NULL, NULL, NULL);
-                
-                // 마우스 설정 레이블
-                CreateWindowW(L"STATIC", L"🖱️ 마우스 입력 저장 활성화", WS_CHILD | WS_VISIBLE | SS_CENTER,
-                             20, 108, 410, 20, hDlg, NULL, NULL, NULL);
-                
-                // 체크박스: 왼쪽 클릭 (ID 101)
-                CreateWindowW(L"BUTTON", L"왼쪽 클릭", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                             40, 138, 110, 22, hDlg, (HMENU)101, NULL, NULL);
-                
-                // 체크박스: 가운데 클릭 (ID 102)
-                CreateWindowW(L"BUTTON", L"가운데 클릭 (휠)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                             170, 138, 130, 22, hDlg, (HMENU)102, NULL, NULL);
-                
-                // 체크박스: 휠 틸트 (ID 103)
-                CreateWindowW(L"BUTTON", L"휠 틸트 (좌우)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                             310, 138, 110, 22, hDlg, (HMENU)103, NULL, NULL);
-                
-                // 확인/취소 버튼
-                CreateWindowW(L"BUTTON", L"확인", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                             130, 185, 80, 30, hDlg, (HMENU)1003, NULL, NULL);
-                CreateWindowW(L"BUTTON", L"취소", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                             240, 185, 80, 30, hDlg, (HMENU)IDCANCEL, NULL, NULL);
-                
-                // 하단 설명
-                CreateWindowW(L"STATIC", L"※ 확인 버튼을 눌러야 설정이 저장됩니다", 
-                             WS_CHILD | WS_VISIBLE | SS_CENTER,
-                             20, 230, 410, 18, hDlg, NULL, NULL, NULL);
-                
-                SetWindowLongPtrW(hDlg, GWLP_WNDPROC, (LONG_PTR)ConfigDlgProc);
-                SendMessageW(hDlg, WM_INITDIALOG, 0, 0);
-                ShowWindow(hDlg, SW_SHOW);
-                UpdateWindow(hDlg);
-            }
-        } else {
-            SetForegroundWindow(g_hConfigDlg);
-        }
+        ShowConfigDialog(hWnd);
     } else if (cmd == 1002) {
         if (g_hMouseHook) {
             UnhookWindowsHookEx(g_hMouseHook);
@@ -368,6 +398,7 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
     }
 }
 
+// 📋 메인 윈도우 프로시저
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_PAINT: {
@@ -428,6 +459,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
+// 🚀 프로그램 진입점
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     LoadConfig();
     
