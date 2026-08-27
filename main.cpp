@@ -3,6 +3,7 @@
 #include <string>
 
 HWND g_hWnd = NULL;
+HHOOK g_hMouseHook = NULL;
 int g_clickCount = 1;
 
 // 📝 좌표 저장 함수 (실행 파일과 같은 폴더)
@@ -29,6 +30,15 @@ void SaveClickPosition(int x, int y) {
     
     SetWindowTextW(g_hWnd, L"✅ 저장됨!");
     SetTimer(g_hWnd, 2, 1000, NULL);
+}
+
+// 🖱️ 전역 마우스 훅 (화면 전체에서 왼쪽 클릭 감지)
+LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode >= 0 && wParam == WM_LBUTTONDOWN) {
+        MSLLHOOKSTRUCT* pStruct = (MSLLHOOKSTRUCT*)lParam;
+        SaveClickPosition(pStruct->pt.x, pStruct->pt.y);
+    }
+    return CallNextHookEx(g_hMouseHook, nCode, wParam, lParam);
 }
 
 // 📋 윈도우 프로시저
@@ -59,22 +69,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         }
         case WM_TIMER: {
             if (wParam == 1) {
-                InvalidateRect(hWnd, NULL, TRUE);
+                InvalidateRect(hWnd, NULL, TRUE);  // 좌표 갱신
             } else if (wParam == 2) {
                 SetWindowTextW(hWnd, L"마우스 좌표 트래커");
                 KillTimer(hWnd, 2);
             }
             break;
         }
-        case WM_LBUTTONDOWN: {
-            int x = GET_X_LPARAM(lParam);
-            int y = GET_Y_LPARAM(lParam);
-            POINT pt = { x, y };
-            ClientToScreen(hWnd, &pt);
-            SaveClickPosition(pt.x, pt.y);
-            break;
-        }
         case WM_CONTEXTMENU: {
+            // 📋 우클릭 시 종료 메뉴
             HMENU hMenu = CreatePopupMenu();
             AppendMenuW(hMenu, MF_STRING, 1, L"🚪 종료");
             
@@ -90,9 +93,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             break;
         }
         case WM_DESTROY:
+            if (g_hMouseHook) {
+                UnhookWindowsHookEx(g_hMouseHook);
+                g_hMouseHook = NULL;
+            }
             PostQuitMessage(0);
             break;
-        기본:
+        default:
             return DefWindowProcW(hWnd, message, wParam, lParam);
     }
     return 0;
@@ -105,17 +112,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hInstance = hInstance;
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = L"MouseTrackerClass";
-    
-    // ✅ 수정된 부분: MAKEINTRESOURCEW 대신 직접 캐스팅
     wc.hIcon = LoadIconW(NULL, (LPCWSTR)IDI_INFORMATION);
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     
-    RegisterClassW(&wc);
+    if (!RegisterClassW(&wc)) {
+        MessageBoxW(NULL, L"윈도우 클래스 등록 실패!", L"오류", MB_OK);
+        return 1;
+    }
 
     g_hWnd = CreateWindowW(L"MouseTrackerClass", L"마우스 좌표 트래커",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 400, 120,
         NULL, NULL, hInstance, NULL);
+
+    if (!g_hWnd) {
+        MessageBoxW(NULL, L"윈도우 생성 실패!", L"오류", MB_OK);
+        return 1;
+    }
 
     if (wc.hIcon) {
         SendMessageW(g_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)wc.hIcon);
@@ -125,6 +138,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     SetWindowPos(g_hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
+
+    // 🖱️ 전역 마우스 훅 설치 (화면 전체 클릭 감지)
+    g_hMouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHookProc, hInstance, 0);
+    if (!g_hMouseHook) {
+        SetWindowTextW(g_hWnd, L"❌ 훅 설치 실패 (관리자 권한 필요)");
+        SetTimer(g_hWnd, 2, 2000, NULL);
+    }
 
     SetTimer(g_hWnd, 1, 50, NULL);
 
