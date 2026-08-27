@@ -59,7 +59,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         }
         case WM_TIMER: {
             if (wParam == 1) {
-                InvalidateRect(hWnd, NULL, TRUE);  // 좌표 갱신
+                InvalidateRect(hWnd, NULL, TRUE);
             } else if (wParam == 2) {
                 SetWindowTextW(hWnd, L"마우스 좌표 트래커");
                 KillTimer(hWnd, 2);
@@ -67,7 +67,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             break;
         }
         case WM_LBUTTONDOWN: {
-            // 🖱️ 왼쪽 클릭 시 좌표 저장
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
             POINT pt = { x, y };
@@ -76,7 +75,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             break;
         }
         case WM_CONTEXTMENU: {
-            // 📋 우클릭 시 종료 메뉴
             HMENU hMenu = CreatePopupMenu();
             AppendMenuW(hMenu, MF_STRING, 1, L"🚪 종료");
             
@@ -94,7 +92,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_DESTROY:
             PostQuitMessage(0);
             break;
-        default:
+        기본:
             return DefWindowProcW(hWnd, message, wParam, lParam);
     }
     return 0;
@@ -107,8 +105,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hInstance = hInstance;
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = L"MouseTrackerClass";
-    wc.hIcon = LoadIconW(NULL, MAKEINTRESOURCEW(IDI_INFORMATION));
-    wc.hCursor = LoadCursorW(NULL, MAKEINTRESOURCEW(IDC_ARROW));
+    
+    // ✅ 수정된 부분: MAKEINTRESOURCEW 대신 직접 캐스팅
+    wc.hIcon = LoadIconW(NULL, (LPCWSTR)IDI_INFORMATION);
+    wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
+    
     RegisterClassW(&wc);
 
     g_hWnd = CreateWindowW(L"MouseTrackerClass", L"마우스 좌표 트래커",
@@ -125,7 +126,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
 
-    SetTimer(g_hWnd, 1, 50, NULL);  // 50ms마다 좌표 갱신
+    SetTimer(g_hWnd, 1, 50, NULL);
 
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
