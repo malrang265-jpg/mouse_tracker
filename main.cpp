@@ -22,7 +22,7 @@ bool g_saveOnWheelTilt = true;
 HWND g_hConfigDlg = NULL;
 bool g_isWaitingForKey = false;
 
-// 📖 설정 파일 읽기 (UTF-16 LE)
+// 📖 설정 파일 읽기 (UTF-8, BOM 무시)
 void LoadConfig() {
     wchar_t configPath[MAX_PATH];
     GetModuleFileNameW(NULL, configPath, MAX_PATH);
@@ -30,96 +30,74 @@ void LoadConfig() {
     if (lastSlash) *(lastSlash + 1) = L'\0';
     wcscat_s(configPath, MAX_PATH, L"config.ini");
     
-    std::wifstream file(configPath, std::ios::binary);
+    // char 기반 ifstream으로 읽기 (인코딩 문제 없음)
+    std::ifstream file(configPath);
     if (!file.is_open()) return;
     
-    // UTF-16 BOM 확인 (0xFFFE)
-    unsigned short bom;
-    file.read((char*)&bom, 2);
-    if (bom != 0xFEFF) {
-        file.close();
-        // BOM 없으면 UTF-8로 시도 (예전 버전 호환)
-        std::ifstream file8(configPath);
-        if (!file8.is_open()) return;
-        std::string line;
-        std::wstring modifiers, key, mouseClick, middleClick, wheelTilt;
-        while (std::getline(file8, line)) {
-            if (line.empty() || line[0] == '#') continue;
-            size_t eqPos = line.find('=');
-            if (eqPos == std::string::npos) continue;
-            std::string keyName = line.substr(0, eqPos);
-            std::string value = line.substr(eqPos + 1);
-            keyName.erase(0, keyName.find_first_not_of(" \t\r\n"));
-            keyName.erase(keyName.find_last_not_of(" \t\r\n") + 1);
-            value.erase(0, value.find_first_not_of(" \t\r\n"));
-            value.erase(value.find_last_not_of(" \t\r\n") + 1);
-            
-            std::wstring wKey = std::wstring(keyName.begin(), keyName.end());
-            std::wstring wVal = std::wstring(value.begin(), value.end());
-            if (wKey == L"Modifiers") modifiers = wVal;
-            else if (wKey == L"Key") key = wVal;
-            else if (wKey == L"SaveOnMouseClick") mouseClick = wVal;
-            else if (wKey == L"SaveOnMiddleClick") middleClick = wVal;
-            else if (wKey == L"SaveOnWheelTilt") wheelTilt = wVal;
-        }
-        // 파싱은 아래에서 공통으로 처리
-    } else {
-        // UTF-16 읽기
-        std::wstring line;
-        std::wstring modifiers, key, mouseClick, middleClick, wheelTilt;
-        while (std::getline(file, line)) {
-            if (line.empty() || line[0] == L'#') continue;
-            size_t eqPos = line.find(L'=');
-            if (eqPos == std::wstring::npos) continue;
-            std::wstring keyName = line.substr(0, eqPos);
-            std::wstring value = line.substr(eqPos + 1);
-            keyName.erase(0, keyName.find_first_not_of(L" \t\r\n"));
-            keyName.erase(keyName.find_last_not_of(L" \t\r\n") + 1);
-            value.erase(0, value.find_first_not_of(L" \t\r\n"));
-            value.erase(value.find_last_not_of(L" \t\r\n") + 1);
-            
-            if (keyName == L"Modifiers") modifiers = value;
-            else if (keyName == L"Key") key = value;
-            else if (keyName == L"SaveOnMouseClick") mouseClick = value;
-            else if (keyName == L"SaveOnMiddleClick") middleClick = value;
-            else if (keyName == L"SaveOnWheelTilt") wheelTilt = value;
-        }
-        // 파싱
-        if (!modifiers.empty()) {
-            int mod = 0;
-            std::wstringstream ss(modifiers);
-            std::wstring token;
-            while (std::getline(ss, token, L'+')) {
-                token.erase(0, token.find_first_not_of(L" \t"));
-                token.erase(token.find_last_not_of(L" \t") + 1);
-                if (token == L"Ctrl") mod |= MOD_CONTROL;
-                else if (token == L"Shift") mod |= MOD_SHIFT;
-                else if (token == L"Alt") mod |= MOD_ALT;
-                else if (token == L"Win") mod |= MOD_WIN;
-            }
-            if (mod != 0) g_hotkeyModifiers = mod;
-        }
-        if (!key.empty()) {
-            if (key == L"Space") g_hotkeyKey = VK_SPACE;
-            else if (key == L"Tab") g_hotkeyKey = VK_TAB;
-            else if (key == L"Enter") g_hotkeyKey = VK_RETURN;
-            else if (key == L"Escape") g_hotkeyKey = VK_ESCAPE;
-            else if (key.length() == 1 && iswalpha(key[0])) g_hotkeyKey = toupper(key[0]);
-            else if (key.find(L"F") == 0 && key.length() <= 3) {
-                int num = _wtoi(key.substr(1).c_str());
-                if (num >= 1 && num <= 12) g_hotkeyKey = VK_F1 + num - 1;
-            }
-        }
-        auto parseBool = [](const std::wstring& str) -> bool {
-            return (str == L"Yes" || str == L"yes" || str == L"True" || str == L"true");
-        };
-        if (!mouseClick.empty()) g_saveOnMouseClick = parseBool(mouseClick);
-        if (!middleClick.empty()) g_saveOnMiddleClick = parseBool(middleClick);
-        if (!wheelTilt.empty()) g_saveOnWheelTilt = parseBool(wheelTilt);
+    std::string line;
+    std::string modifiers, key, mouseClick, middleClick, wheelTilt;
+    
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        size_t eqPos = line.find('=');
+        if (eqPos == std::string::npos) continue;
+        
+        std::string keyName = line.substr(0, eqPos);
+        std::string value = line.substr(eqPos + 1);
+        
+        // 공백 제거
+        keyName.erase(0, keyName.find_first_not_of(" \t\r\n"));
+        keyName.erase(keyName.find_last_not_of(" \t\r\n") + 1);
+        value.erase(0, value.find_first_not_of(" \t\r\n"));
+        value.erase(value.find_last_not_of(" \t\r\n") + 1);
+        
+        if (keyName == "Modifiers") modifiers = value;
+        else if (keyName == "Key") key = value;
+        else if (keyName == "SaveOnMouseClick") mouseClick = value;
+        else if (keyName == "SaveOnMiddleClick") middleClick = value;
+        else if (keyName == "SaveOnWheelTilt") wheelTilt = value;
     }
+    
+    // Modifiers 파싱 (string → int)
+    if (!modifiers.empty()) {
+        int mod = 0;
+        std::istringstream ss(modifiers);
+        std::string token;
+        while (std::getline(ss, token, '+')) {
+            token.erase(0, token.find_first_not_of(" \t"));
+            token.erase(token.find_last_not_of(" \t") + 1);
+            if (token == "Ctrl") mod |= MOD_CONTROL;
+            else if (token == "Shift") mod |= MOD_SHIFT;
+            else if (token == "Alt") mod |= MOD_ALT;
+            else if (token == "Win") mod |= MOD_WIN;
+        }
+        if (mod != 0) g_hotkeyModifiers = mod;
+    }
+    
+    // Key 파싱 (string → int)
+    if (!key.empty()) {
+        if (key == "Space") g_hotkeyKey = VK_SPACE;
+        else if (key == "Tab") g_hotkeyKey = VK_TAB;
+        else if (key == "Enter") g_hotkeyKey = VK_RETURN;
+        else if (key == "Escape") g_hotkeyKey = VK_ESCAPE;
+        else if (key.length() == 1 && isalpha(key[0])) {
+            g_hotkeyKey = toupper(key[0]);
+        } else if (key.find("F") == 0 && key.length() <= 3) {
+            int num = std::stoi(key.substr(1));
+            if (num >= 1 && num <= 12) g_hotkeyKey = VK_F1 + num - 1;
+        }
+    }
+    
+    // 불리언 값 파싱
+    auto parseBool = [](const std::string& str) -> bool {
+        return (str == "Yes" || str == "yes" || str == "True" || str == "true");
+    };
+    if (!mouseClick.empty()) g_saveOnMouseClick = parseBool(mouseClick);
+    if (!middleClick.empty()) g_saveOnMiddleClick = parseBool(middleClick);
+    if (!wheelTilt.empty()) g_saveOnWheelTilt = parseBool(wheelTilt);
 }
 
-// 💾 설정 파일 저장 (UTF-16 LE with BOM)
+// 💾 설정 파일 저장 (UTF-8, BOM 없음)
 void SaveConfig() {
     wchar_t configPath[MAX_PATH];
     GetModuleFileNameW(NULL, configPath, MAX_PATH);
@@ -127,36 +105,34 @@ void SaveConfig() {
     if (lastSlash) *(lastSlash + 1) = L'\0';
     wcscat_s(configPath, MAX_PATH, L"config.ini");
     
-    std::wofstream file(configPath, std::ios::binary);
+    std::ofstream file(configPath);
     if (!file.is_open()) return;
     
-    // UTF-16 BOM 쓰기
-    unsigned short bom = 0xFEFF;
-    file.write((char*)&bom, 2);
-    
-    std::wstring modStr;
-    if (g_hotkeyModifiers & MOD_CONTROL) modStr += L"Ctrl+";
-    if (g_hotkeyModifiers & MOD_SHIFT) modStr += L"Shift+";
-    if (g_hotkeyModifiers & MOD_ALT) modStr += L"Alt+";
-    if (g_hotkeyModifiers & MOD_WIN) modStr += L"Win+";
+    // Modifier 문자열 생성
+    std::string modStr;
+    if (g_hotkeyModifiers & MOD_CONTROL) modStr += "Ctrl+";
+    if (g_hotkeyModifiers & MOD_SHIFT) modStr += "Shift+";
+    if (g_hotkeyModifiers & MOD_ALT) modStr += "Alt+";
+    if (g_hotkeyModifiers & MOD_WIN) modStr += "Win+";
     if (!modStr.empty()) modStr.pop_back();
     
-    std::wstring keyStr;
-    if (g_hotkeyKey >= 'A' && g_hotkeyKey <= 'Z') keyStr = (wchar_t)g_hotkeyKey;
-    else if (g_hotkeyKey == VK_SPACE) keyStr = L"Space";
-    else if (g_hotkeyKey == VK_TAB) keyStr = L"Tab";
-    else if (g_hotkeyKey == VK_RETURN) keyStr = L"Enter";
-    else if (g_hotkeyKey == VK_ESCAPE) keyStr = L"Escape";
-    else if (g_hotkeyKey >= VK_F1 && g_hotkeyKey <= VK_F12) keyStr = L"F" + std::to_wstring(g_hotkeyKey - VK_F1 + 1);
-    else keyStr = L"???";
+    // Key 문자열 생성
+    std::string keyStr;
+    if (g_hotkeyKey >= 'A' && g_hotkeyKey <= 'Z') keyStr = (char)g_hotkeyKey;
+    else if (g_hotkeyKey == VK_SPACE) keyStr = "Space";
+    else if (g_hotkeyKey == VK_TAB) keyStr = "Tab";
+    else if (g_hotkeyKey == VK_RETURN) keyStr = "Enter";
+    else if (g_hotkeyKey == VK_ESCAPE) keyStr = "Escape";
+    else if (g_hotkeyKey >= VK_F1 && g_hotkeyKey <= VK_F12) keyStr = "F" + std::to_string(g_hotkeyKey - VK_F1 + 1);
+    else keyStr = "???";
     
-    file << L"[Hotkey]\n";
-    file << L"Modifiers=" << modStr << L"\n";
-    file << L"Key=" << keyStr << L"\n\n";
-    file << L"# 마우스 입력 설정 (Yes/No)\n";
-    file << L"SaveOnMouseClick=" << (g_saveOnMouseClick ? L"Yes" : L"No") << L"\n";
-    file << L"SaveOnMiddleClick=" << (g_saveOnMiddleClick ? L"Yes" : L"No") << L"\n";
-    file << L"SaveOnWheelTilt=" << (g_saveOnWheelTilt ? L"Yes" : L"No") << L"\n";
+    file << "[Hotkey]\n";
+    file << "Modifiers=" << modStr << "\n";
+    file << "Key=" << keyStr << "\n\n";
+    file << "# 마우스 입력 설정 (Yes/No)\n";
+    file << "SaveOnMouseClick=" << (g_saveOnMouseClick ? "Yes" : "No") << "\n";
+    file << "SaveOnMiddleClick=" << (g_saveOnMiddleClick ? "Yes" : "No") << "\n";
+    file << "SaveOnWheelTilt=" << (g_saveOnWheelTilt ? "Yes" : "No") << "\n";
     file.close();
 }
 
@@ -263,9 +239,6 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             } else if (id == IDCANCEL) {  // 취소 버튼
                 DestroyWindow(hDlg);
                 g_hConfigDlg = NULL;
-            } else if (id >= 101 && id <= 103) {
-                // 체크박스 클릭 시 바로 변수 반영 (선택사항)
-                // 실제 저장은 확인 버튼에서 처리
             }
             break;
         }
@@ -343,7 +316,7 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER,
                              20, 15, 410, 25, hDlg, (HMENU)1001, NULL, NULL);
                 
-                // 변경 버튼 (ID 1002) - 중앙 정렬
+                // 변경 버튼 (ID 1002)
                 CreateWindowW(L"BUTTON", L"변경", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                              175, 50, 100, 28, hDlg, (HMENU)1002, NULL, NULL);
                 
@@ -367,7 +340,7 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
                 CreateWindowW(L"BUTTON", L"휠 틸트 (좌우)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                              310, 138, 110, 22, hDlg, (HMENU)103, NULL, NULL);
                 
-                // 확인/취소 버튼 (하단 중앙 정렬)
+                // 확인/취소 버튼
                 CreateWindowW(L"BUTTON", L"확인", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                              130, 185, 80, 30, hDlg, (HMENU)1003, NULL, NULL);
                 CreateWindowW(L"BUTTON", L"취소", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
