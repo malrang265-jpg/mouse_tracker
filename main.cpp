@@ -5,7 +5,6 @@
 #include <fstream>
 #include <sstream>
 #include <cctype>
-#include <vector>
 
 // 전역 변수
 HWND g_hWnd = NULL;
@@ -22,11 +21,8 @@ bool g_saveOnWheelTilt = true;
 // 설정 다이얼로그 관련
 HWND g_hConfigDlg = NULL;
 bool g_isWaitingForKey = false;
-HWND g_hCheckLeft = NULL;
-HWND g_hCheckMiddle = NULL;
-HWND g_hCheckWheel = NULL;
 
-// 📖 설정 파일 읽기 (UTF-8 BOM 처리)
+// 📖 설정 파일 읽기 (UTF-16 LE)
 void LoadConfig() {
     wchar_t configPath[MAX_PATH];
     GetModuleFileNameW(NULL, configPath, MAX_PATH);
@@ -34,94 +30,96 @@ void LoadConfig() {
     if (lastSlash) *(lastSlash + 1) = L'\0';
     wcscat_s(configPath, MAX_PATH, L"config.ini");
     
-    // UTF-8 BOM 처리
-    std::ifstream file(configPath, std::ios::binary);
+    std::wifstream file(configPath, std::ios::binary);
     if (!file.is_open()) return;
     
-    // BOM 체크
-    unsigned char bom[3];
-    file.read((char*)bom, 3);
-    bool hasBOM = (bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF);
-    if (!hasBOM) file.seekg(0);
-    
-    std::string line;
-    std::wstring modifiers, key, mouseClick, middleClick, wheelTilt;
-    
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        size_t eqPos = line.find('=');
-        if (eqPos == std::string::npos) continue;
-        
-        std::string keyName = line.substr(0, eqPos);
-        std::string value = line.substr(eqPos + 1);
-        
-        // 공백 제거
-        keyName.erase(0, keyName.find_first_not_of(" \t\r\n"));
-        keyName.erase(keyName.find_last_not_of(" \t\r\n") + 1);
-        value.erase(0, value.find_first_not_of(" \t\r\n"));
-        value.erase(value.find_last_not_of(" \t\r\n") + 1);
-        
-        // UTF-8 → UTF-16 변환 (간단히)
-        auto toWide = [](const std::string& s) -> std::wstring {
-            if (s.empty()) return L"";
-            int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, NULL, 0);
-            if (len <= 0) return std::wstring(s.begin(), s.end());
-            std::wstring result(len, L'\0');
-            MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &result[0], len);
-            result.pop_back();
-            return result;
+    // UTF-16 BOM 확인 (0xFFFE)
+    unsigned short bom;
+    file.read((char*)&bom, 2);
+    if (bom != 0xFEFF) {
+        file.close();
+        // BOM 없으면 UTF-8로 시도 (예전 버전 호환)
+        std::ifstream file8(configPath);
+        if (!file8.is_open()) return;
+        std::string line;
+        std::wstring modifiers, key, mouseClick, middleClick, wheelTilt;
+        while (std::getline(file8, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            size_t eqPos = line.find('=');
+            if (eqPos == std::string::npos) continue;
+            std::string keyName = line.substr(0, eqPos);
+            std::string value = line.substr(eqPos + 1);
+            keyName.erase(0, keyName.find_first_not_of(" \t\r\n"));
+            keyName.erase(keyName.find_last_not_of(" \t\r\n") + 1);
+            value.erase(0, value.find_first_not_of(" \t\r\n"));
+            value.erase(value.find_last_not_of(" \t\r\n") + 1);
+            
+            std::wstring wKey = std::wstring(keyName.begin(), keyName.end());
+            std::wstring wVal = std::wstring(value.begin(), value.end());
+            if (wKey == L"Modifiers") modifiers = wVal;
+            else if (wKey == L"Key") key = wVal;
+            else if (wKey == L"SaveOnMouseClick") mouseClick = wVal;
+            else if (wKey == L"SaveOnMiddleClick") middleClick = wVal;
+            else if (wKey == L"SaveOnWheelTilt") wheelTilt = wVal;
+        }
+        // 파싱은 아래에서 공통으로 처리
+    } else {
+        // UTF-16 읽기
+        std::wstring line;
+        std::wstring modifiers, key, mouseClick, middleClick, wheelTilt;
+        while (std::getline(file, line)) {
+            if (line.empty() || line[0] == L'#') continue;
+            size_t eqPos = line.find(L'=');
+            if (eqPos == std::wstring::npos) continue;
+            std::wstring keyName = line.substr(0, eqPos);
+            std::wstring value = line.substr(eqPos + 1);
+            keyName.erase(0, keyName.find_first_not_of(L" \t\r\n"));
+            keyName.erase(keyName.find_last_not_of(L" \t\r\n") + 1);
+            value.erase(0, value.find_first_not_of(L" \t\r\n"));
+            value.erase(value.find_last_not_of(L" \t\r\n") + 1);
+            
+            if (keyName == L"Modifiers") modifiers = value;
+            else if (keyName == L"Key") key = value;
+            else if (keyName == L"SaveOnMouseClick") mouseClick = value;
+            else if (keyName == L"SaveOnMiddleClick") middleClick = value;
+            else if (keyName == L"SaveOnWheelTilt") wheelTilt = value;
+        }
+        // 파싱
+        if (!modifiers.empty()) {
+            int mod = 0;
+            std::wstringstream ss(modifiers);
+            std::wstring token;
+            while (std::getline(ss, token, L'+')) {
+                token.erase(0, token.find_first_not_of(L" \t"));
+                token.erase(token.find_last_not_of(L" \t") + 1);
+                if (token == L"Ctrl") mod |= MOD_CONTROL;
+                else if (token == L"Shift") mod |= MOD_SHIFT;
+                else if (token == L"Alt") mod |= MOD_ALT;
+                else if (token == L"Win") mod |= MOD_WIN;
+            }
+            if (mod != 0) g_hotkeyModifiers = mod;
+        }
+        if (!key.empty()) {
+            if (key == L"Space") g_hotkeyKey = VK_SPACE;
+            else if (key == L"Tab") g_hotkeyKey = VK_TAB;
+            else if (key == L"Enter") g_hotkeyKey = VK_RETURN;
+            else if (key == L"Escape") g_hotkeyKey = VK_ESCAPE;
+            else if (key.length() == 1 && iswalpha(key[0])) g_hotkeyKey = toupper(key[0]);
+            else if (key.find(L"F") == 0 && key.length() <= 3) {
+                int num = _wtoi(key.substr(1).c_str());
+                if (num >= 1 && num <= 12) g_hotkeyKey = VK_F1 + num - 1;
+            }
+        }
+        auto parseBool = [](const std::wstring& str) -> bool {
+            return (str == L"Yes" || str == L"yes" || str == L"True" || str == L"true");
         };
-        
-        std::wstring wKey = toWide(keyName);
-        std::wstring wVal = toWide(value);
-        
-        if (wKey == L"Modifiers") modifiers = wVal;
-        else if (wKey == L"Key") key = wVal;
-        else if (wKey == L"SaveOnMouseClick") mouseClick = wVal;
-        else if (wKey == L"SaveOnMiddleClick") middleClick = wVal;
-        else if (wKey == L"SaveOnWheelTilt") wheelTilt = wVal;
+        if (!mouseClick.empty()) g_saveOnMouseClick = parseBool(mouseClick);
+        if (!middleClick.empty()) g_saveOnMiddleClick = parseBool(middleClick);
+        if (!wheelTilt.empty()) g_saveOnWheelTilt = parseBool(wheelTilt);
     }
-    
-    // Modifiers 파싱
-    if (!modifiers.empty()) {
-        int mod = 0;
-        std::wstringstream ss(modifiers);
-        std::wstring token;
-        while (std::getline(ss, token, L'+')) {
-            token.erase(0, token.find_first_not_of(L" \t"));
-            token.erase(token.find_last_not_of(L" \t") + 1);
-            if (token == L"Ctrl") mod |= MOD_CONTROL;
-            else if (token == L"Shift") mod |= MOD_SHIFT;
-            else if (token == L"Alt") mod |= MOD_ALT;
-            else if (token == L"Win") mod |= MOD_WIN;
-        }
-        if (mod != 0) g_hotkeyModifiers = mod;
-    }
-    
-    // Key 파싱
-    if (!key.empty()) {
-        if (key == L"Space") g_hotkeyKey = VK_SPACE;
-        else if (key == L"Tab") g_hotkeyKey = VK_TAB;
-        else if (key == L"Enter") g_hotkeyKey = VK_RETURN;
-        else if (key == L"Escape") g_hotkeyKey = VK_ESCAPE;
-        else if (key.length() == 1 && iswalpha(key[0])) {
-            g_hotkeyKey = toupper(key[0]);
-        } else if (key.find(L"F") == 0 && key.length() <= 3) {
-            int num = _wtoi(key.substr(1).c_str());
-            if (num >= 1 && num <= 12) g_hotkeyKey = VK_F1 + num - 1;
-        }
-    }
-    
-    // 불리언 값 파싱
-    auto parseBool = [](const std::wstring& str) -> bool {
-        return (str == L"Yes" || str == L"yes" || str == L"True" || str == L"true");
-    };
-    if (!mouseClick.empty()) g_saveOnMouseClick = parseBool(mouseClick);
-    if (!middleClick.empty()) g_saveOnMiddleClick = parseBool(middleClick);
-    if (!wheelTilt.empty()) g_saveOnWheelTilt = parseBool(wheelTilt);
 }
 
-// 💾 설정 파일 저장 (UTF-8 with BOM)
+// 💾 설정 파일 저장 (UTF-16 LE with BOM)
 void SaveConfig() {
     wchar_t configPath[MAX_PATH];
     GetModuleFileNameW(NULL, configPath, MAX_PATH);
@@ -129,24 +127,13 @@ void SaveConfig() {
     if (lastSlash) *(lastSlash + 1) = L'\0';
     wcscat_s(configPath, MAX_PATH, L"config.ini");
     
-    std::ofstream file(configPath, std::ios::binary);
+    std::wofstream file(configPath, std::ios::binary);
     if (!file.is_open()) return;
     
-    // UTF-8 BOM 쓰기
-    unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
-    file.write((char*)bom, 3);
+    // UTF-16 BOM 쓰기
+    unsigned short bom = 0xFEFF;
+    file.write((char*)&bom, 2);
     
-    auto toUTF8 = [](const std::wstring& wstr) -> std::string {
-        if (wstr.empty()) return "";
-        int len = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
-        if (len <= 0) return std::string(wstr.begin(), wstr.end());
-        std::string result(len, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &result[0], len, NULL, NULL);
-        result.pop_back();
-        return result;
-    };
-    
-    // Modifier 문자열 생성
     std::wstring modStr;
     if (g_hotkeyModifiers & MOD_CONTROL) modStr += L"Ctrl+";
     if (g_hotkeyModifiers & MOD_SHIFT) modStr += L"Shift+";
@@ -154,7 +141,6 @@ void SaveConfig() {
     if (g_hotkeyModifiers & MOD_WIN) modStr += L"Win+";
     if (!modStr.empty()) modStr.pop_back();
     
-    // Key 문자열 생성
     std::wstring keyStr;
     if (g_hotkeyKey >= 'A' && g_hotkeyKey <= 'Z') keyStr = (wchar_t)g_hotkeyKey;
     else if (g_hotkeyKey == VK_SPACE) keyStr = L"Space";
@@ -164,13 +150,13 @@ void SaveConfig() {
     else if (g_hotkeyKey >= VK_F1 && g_hotkeyKey <= VK_F12) keyStr = L"F" + std::to_wstring(g_hotkeyKey - VK_F1 + 1);
     else keyStr = L"???";
     
-    file << "[Hotkey]\n";
-    file << "Modifiers=" << toUTF8(modStr) << "\n";
-    file << "Key=" << toUTF8(keyStr) << "\n\n";
-    file << "# 마우스 입력 설정 (Yes/No)\n";
-    file << "SaveOnMouseClick=" << (g_saveOnMouseClick ? "Yes" : "No") << "\n";
-    file << "SaveOnMiddleClick=" << (g_saveOnMiddleClick ? "Yes" : "No") << "\n";
-    file << "SaveOnWheelTilt=" << (g_saveOnWheelTilt ? "Yes" : "No") << "\n";
+    file << L"[Hotkey]\n";
+    file << L"Modifiers=" << modStr << L"\n";
+    file << L"Key=" << keyStr << L"\n\n";
+    file << L"# 마우스 입력 설정 (Yes/No)\n";
+    file << L"SaveOnMouseClick=" << (g_saveOnMouseClick ? L"Yes" : L"No") << L"\n";
+    file << L"SaveOnMiddleClick=" << (g_saveOnMiddleClick ? L"Yes" : L"No") << L"\n";
+    file << L"SaveOnWheelTilt=" << (g_saveOnWheelTilt ? L"Yes" : L"No") << L"\n";
     file.close();
 }
 
@@ -224,17 +210,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             g_hConfigDlg = hDlg;
             g_isWaitingForKey = false;
             
-            // 컨트롤 핸들 저장
-            g_hCheckLeft = GetDlgItem(hDlg, 101);
-            g_hCheckMiddle = GetDlgItem(hDlg, 102);
-            g_hCheckWheel = GetDlgItem(hDlg, 103);
-            
-            // 현재 상태로 체크박스 설정
-            SendMessageW(g_hCheckLeft, BM_SETCHECK, g_saveOnMouseClick ? BST_CHECKED : BST_UNCHECKED, 0);
-            SendMessageW(g_hCheckMiddle, BM_SETCHECK, g_saveOnMiddleClick ? BST_CHECKED : BST_UNCHECKED, 0);
-            SendMessageW(g_hCheckWheel, BM_SETCHECK, g_saveOnWheelTilt ? BST_CHECKED : BST_UNCHECKED, 0);
-            
-            // 현재 단축키 표시
+            // 현재 단축키 표시 (ID 1001)
             wchar_t text[256];
             std::wstring modStr;
             if (g_hotkeyModifiers & MOD_CONTROL) modStr += L"Ctrl+";
@@ -255,32 +231,41 @@ INT_PTR CALLBACK ConfigDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             
             wsprintfW(text, L"현재 단축키: %s + %s", modStr.c_str(), keyStr.c_str());
             SetDlgItemTextW(hDlg, 1001, text);
-            SetDlgItemTextW(hDlg, 1002, L"변경할 단축키를 누르세요...");
-            EnableWindow(GetDlgItem(hDlg, 1003), FALSE);
+            SetDlgItemTextW(hDlg, 1002, L"변경");
+            EnableWindow(GetDlgItem(hDlg, 1003), TRUE);
+            
+            // 체크박스 상태 설정 (ID 101, 102, 103)
+            SendDlgItemMessageW(hDlg, 101, BM_SETCHECK, g_saveOnMouseClick ? BST_CHECKED : BST_UNCHECKED, 0);
+            SendDlgItemMessageW(hDlg, 102, BM_SETCHECK, g_saveOnMiddleClick ? BST_CHECKED : BST_UNCHECKED, 0);
+            SendDlgItemMessageW(hDlg, 103, BM_SETCHECK, g_saveOnWheelTilt ? BST_CHECKED : BST_UNCHECKED, 0);
             return TRUE;
         }
         case WM_COMMAND: {
-            if (LOWORD(wParam) == 1002) {  // 변경 버튼
+            int id = LOWORD(wParam);
+            
+            if (id == 1002) {  // 변경 버튼
                 g_isWaitingForKey = true;
-                SetDlgItemTextW(hDlg, 1002, L"키를 입력하세요...");
-                SetDlgItemTextW(hDlg, 1001, L"단축키를 누르면 자동 등록됩니다");
+                SetDlgItemTextW(hDlg, 1002, L"키 입력 중...");
+                SetDlgItemTextW(hDlg, 1001, L"원하는 단축키를 눌러주세요");
                 EnableWindow(GetDlgItem(hDlg, 1003), FALSE);
                 SetFocus(hDlg);
-            } else if (LOWORD(wParam) == 1003) {  // 확인 버튼
+            } else if (id == 1003) {  // 확인 버튼
+                // 체크박스 상태 저장
+                g_saveOnMouseClick = (SendDlgItemMessageW(hDlg, 101, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                g_saveOnMiddleClick = (SendDlgItemMessageW(hDlg, 102, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                g_saveOnWheelTilt = (SendDlgItemMessageW(hDlg, 103, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                
                 SaveConfig();
                 UnregisterHotKey(g_hWnd, 1);
                 RegisterHotKey(g_hWnd, 1, g_hotkeyModifiers, g_hotkeyKey);
                 DestroyWindow(hDlg);
                 g_hConfigDlg = NULL;
-            } else if (LOWORD(wParam) == IDCANCEL) {
+            } else if (id == IDCANCEL) {  // 취소 버튼
                 DestroyWindow(hDlg);
                 g_hConfigDlg = NULL;
-            } else if (LOWORD(wParam) >= 101 && LOWORD(wParam) <= 103) {
-                // 체크박스 변경 시 바로 적용
-                bool checked = (SendMessageW((HWND)lParam, BM_GETCHECK, 0, 0) == BST_CHECKED);
-                if (LOWORD(wParam) == 101) g_saveOnMouseClick = checked;
-                else if (LOWORD(wParam) == 102) g_saveOnMiddleClick = checked;
-                else if (LOWORD(wParam) == 103) g_saveOnWheelTilt = checked;
+            } else if (id >= 101 && id <= 103) {
+                // 체크박스 클릭 시 바로 변수 반영 (선택사항)
+                // 실제 저장은 확인 버튼에서 처리
             }
             break;
         }
@@ -351,45 +336,47 @@ void ShowContextMenu(HWND hWnd, int x, int y) {
         if (g_hConfigDlg == NULL) {
             HWND hDlg = CreateWindowExW(0, L"#32770", L"설정",
                                        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                                       CW_USEDEFAULT, CW_USEDEFAULT, 420, 250,
+                                       CW_USEDEFAULT, CW_USEDEFAULT, 450, 260,
                                        hWnd, NULL, GetModuleHandle(NULL), NULL);
             if (hDlg) {
-                // 단축키 표시 (1001)
+                // 단축키 표시 (ID 1001)
                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER,
-                             20, 15, 380, 25, hDlg, (HMENU)1001, NULL, NULL);
+                             20, 15, 410, 25, hDlg, (HMENU)1001, NULL, NULL);
                 
-                // 단축키 변경 버튼 (1002)
+                // 변경 버튼 (ID 1002) - 중앙 정렬
                 CreateWindowW(L"BUTTON", L"변경", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                             155, 50, 100, 28, hDlg, (HMENU)1002, NULL, NULL);
+                             175, 50, 100, 28, hDlg, (HMENU)1002, NULL, NULL);
                 
-                // 확인 버튼 (1003)
-                CreateWindowW(L"BUTTON", L"확인", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                             100, 180, 80, 30, hDlg, (HMENU)1003, NULL, NULL);
-                
-                // 취소 버튼 (IDCANCEL)
-                CreateWindowW(L"BUTTON", L"취소", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                             230, 180, 80, 30, hDlg, (HMENU)IDCANCEL, NULL, NULL);
-                
-                // 구분선 (Static)
+                // 구분선
                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
-                             20, 95, 380, 2, hDlg, NULL, NULL, NULL);
+                             20, 95, 410, 2, hDlg, NULL, NULL, NULL);
                 
-                // 체크박스: 왼쪽 클릭 (101)
-                CreateWindowW(L"BUTTON", L"✅ 왼쪽 클릭 저장", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                             30, 115, 170, 22, hDlg, (HMENU)101, NULL, NULL);
+                // 마우스 설정 레이블
+                CreateWindowW(L"STATIC", L"🖱️ 마우스 입력 저장 활성화", WS_CHILD | WS_VISIBLE | SS_CENTER,
+                             20, 108, 410, 20, hDlg, NULL, NULL, NULL);
                 
-                // 체크박스: 가운데 클릭 (102)
-                CreateWindowW(L"BUTTON", L"🖱️ 가운데 클릭 저장", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                             30, 142, 170, 22, hDlg, (HMENU)102, NULL, NULL);
+                // 체크박스: 왼쪽 클릭 (ID 101)
+                CreateWindowW(L"BUTTON", L"왼쪽 클릭", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                             40, 138, 110, 22, hDlg, (HMENU)101, NULL, NULL);
                 
-                // 체크박스: 휠 틸트 (103)
-                CreateWindowW(L"BUTTON", L"🔄 휠 틸트(좌우) 저장", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                             220, 115, 170, 22, hDlg, (HMENU)103, NULL, NULL);
+                // 체크박스: 가운데 클릭 (ID 102)
+                CreateWindowW(L"BUTTON", L"가운데 클릭 (휠)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                             170, 138, 130, 22, hDlg, (HMENU)102, NULL, NULL);
+                
+                // 체크박스: 휠 틸트 (ID 103)
+                CreateWindowW(L"BUTTON", L"휠 틸트 (좌우)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                             310, 138, 110, 22, hDlg, (HMENU)103, NULL, NULL);
+                
+                // 확인/취소 버튼 (하단 중앙 정렬)
+                CreateWindowW(L"BUTTON", L"확인", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                             130, 185, 80, 30, hDlg, (HMENU)1003, NULL, NULL);
+                CreateWindowW(L"BUTTON", L"취소", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                             240, 185, 80, 30, hDlg, (HMENU)IDCANCEL, NULL, NULL);
                 
                 // 하단 설명
-                CreateWindowW(L"STATIC", L"※ 변경사항은 확인 버튼을 눌러야 저장됩니다", 
+                CreateWindowW(L"STATIC", L"※ 확인 버튼을 눌러야 설정이 저장됩니다", 
                              WS_CHILD | WS_VISIBLE | SS_CENTER,
-                             20, 210, 380, 18, hDlg, NULL, NULL, NULL);
+                             20, 230, 410, 18, hDlg, NULL, NULL, NULL);
                 
                 SetWindowLongPtrW(hDlg, GWLP_WNDPROC, (LONG_PTR)ConfigDlgProc);
                 SendMessageW(hDlg, WM_INITDIALOG, 0, 0);
